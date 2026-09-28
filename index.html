@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="Premium TikTok Video Downloader - Download TikTok videos without watermark in HD quality." />
+  <title>TikSave - Premium TikTok Downloader</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <!-- Animated background -->
+  <div class="bg-animation">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <div id="app">
+    <header>
+      <div class="logo">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#gradient)" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <defs>
+            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fe2c55" />
+              <stop offset="100%" stop-color="#25f4ee" />
+            </linearGradient>
+          </defs>
+          <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"></path>
+        </svg>
+        <h1>TikSave</h1>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="hero">
+        <h2 class="title">Download TikTok Videos<br>Without Watermark</h2>
+        <p class="subtitle">Fast, secure, and high-quality MP4 downloads</p>
+      </div>
+
+      <div class="search-box">
+        <form id="download-form">
+          <div class="input-group">
+            <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+            <input type="text" id="url-input" placeholder="Paste TikTok URL here (e.g., https://vt.tiktok.com/...)"
+              required autocomplete="off">
+            <button type="button" id="paste-btn" class="icon-btn" title="Paste from clipboard">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+              </svg>
+            </button>
+          </div>
+          <button type="submit" id="submit-btn" class="primary-btn">
+            <span>Get Video</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </button>
+        </form>
+        <div id="loading" class="hidden">
+          <div class="spinner"></div>
+          <p>Extracting video information...</p>
+        </div>
+        <div id="error-message" class="error hidden"></div>
+      </div>
+
+      <!-- Result Container -->
+      <div id="result-container" class="result-box hidden">
+        <!-- Populated by JS -->
+      </div>
+    </main>
+
+    <footer>
+      <p>&copy; 2026 TikSave - Affiliate with TikTok.</p>
+    </footer>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>
