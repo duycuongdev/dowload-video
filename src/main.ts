@@ -1,217 +1,262 @@
 import './style.css';
+import { fetchVideoInfo, getDownloadUrl, getPreviewUrl, getYtdlpDownloadUrl } from './api';
+import {
+  DEFAULT_AVATAR,
+  DOWNLOAD_FILE_EXTENSION,
+  PLATFORM_META,
+  detectPlatformId,
+  type PlatformId,
+} from './config';
+import { downloadWithPicker } from './download';
+import type { VideoFormat, VideoInfo } from './types';
 
-const form = document.getElementById('download-form') as HTMLFormElement;
-const urlInput = document.getElementById('url-input') as HTMLInputElement;
-const pasteBtn = document.getElementById('paste-btn') as HTMLButtonElement;
-const loading = document.getElementById('loading') as HTMLDivElement;
-const errorMsg = document.getElementById('error-message') as HTMLDivElement;
-const resultContainer = document.getElementById('result-container') as HTMLDivElement;
+const form = document.querySelector<HTMLFormElement>('#download-form')!;
+const urlInput = document.querySelector<HTMLInputElement>('#url-input')!;
+const pasteButton = document.querySelector<HTMLButtonElement>('#paste-btn')!;
+const loading = document.querySelector<HTMLDivElement>('#loading')!;
+const errorMessage = document.querySelector<HTMLDivElement>('#error-message')!;
+const resultContainer = document.querySelector<HTMLDivElement>('#result-container')!;
 
-const API_BASE = 'http://localhost:3001/api';
+pasteButton.addEventListener('click', pasteUrl);
+form.addEventListener('submit', handleSubmit);
 
-// Format numbers (e.g. 1500000 -> 1.5M)
-function formatNumber(num: number): string {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K';
-  }
-  return num.toString();
-}
-
-// Paste from clipboard
-pasteBtn.addEventListener('click', async () => {
+async function pasteUrl(): Promise<void> {
   try {
     const text = await navigator.clipboard.readText();
     if (text) {
       urlInput.value = text;
-      // Focus input to show it's active
       urlInput.focus();
     }
-  } catch (err) {
-    console.error('Failed to read clipboard contents: ', err);
+  } catch {
     showError('Could not paste from clipboard. Please paste manually.');
   }
-});
+}
 
-// Handle form submission
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  
+async function handleSubmit(event: SubmitEvent): Promise<void> {
+  event.preventDefault();
   const url = urlInput.value.trim();
-  if (!url) {
-    showError('Please enter a TikTok URL');
+  if (!detectPlatformId(url)) {
+    showError('Please enter a valid video URL from TikTok, YouTube, Facebook or Instagram');
     return;
   }
-
-  // Basic validation for TikTok URL
-  if (!url.includes('tiktok.com')) {
-    showError('Please enter a valid TikTok URL');
-    return;
-  }
-
-  // Reset UI state
   hideError();
   resultContainer.classList.add('hidden');
   loading.classList.remove('hidden');
-
   try {
-    const response = await fetch(`${API_BASE}/video-info`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Failed to fetch video information');
-    }
-
-    renderResult(data.data);
-  } catch (err: any) {
-    showError(err.message || 'An unexpected error occurred. Please try again.');
+    renderResult(await fetchVideoInfo(url));
+  } catch (error) {
+    showError(error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.');
   } finally {
     loading.classList.add('hidden');
   }
-});
-
-function showError(msg: string) {
-  errorMsg.textContent = msg;
-  errorMsg.classList.remove('hidden');
 }
 
-function hideError() {
-  errorMsg.classList.add('hidden');
-  errorMsg.textContent = '';
-}
-
-function renderResult(video: any) {
-  // We use the proxy endpoints to bypass CORS when downloading/previewing
-  const previewUrl = video.hdVideoUrl 
-    ? `${API_BASE}/preview?url=${encodeURIComponent(video.hdVideoUrl)}`
-    : video.videoUrl 
-      ? `${API_BASE}/preview?url=${encodeURIComponent(video.videoUrl)}` 
-      : '';
-
-  const safeFilename = `tiktok_${video.id || 'video'}.mp4`;
-  
-  const hdDownloadUrl = video.hdVideoUrl 
-    ? `${API_BASE}/download?url=${encodeURIComponent(video.hdVideoUrl)}&filename=hd_${safeFilename}`
-    : '';
-    
-  const wmDownloadUrl = video.wmVideoUrl 
-    ? `${API_BASE}/download?url=${encodeURIComponent(video.wmVideoUrl)}&filename=wm_${safeFilename}`
-    : '';
-
-  resultContainer.innerHTML = `
-    <div class="video-preview">
-      ${previewUrl 
-        ? `<video src="${previewUrl}" poster="${video.cover || ''}" controls preload="metadata"></video>`
-        : `<img src="${video.cover || ''}" alt="Video cover" style="width:100%;height:100%;object-fit:cover;">`
-      }
-    </div>
-    
-    <div class="video-info">
-      <div class="author-info">
-        <img src="${video.author?.avatar || '/vite.svg'}" alt="${video.author?.name}" class="author-avatar" onerror="this.src='/vite.svg'">
-        <div class="author-details">
-          <h3>${video.author?.name || 'Unknown'}</h3>
-          <p>@${video.author?.username || 'unknown'}</p>
-        </div>
-      </div>
-      
-      <p class="video-desc">${video.title || 'No description'}</p>
-      
-      <div class="stats">
-        <div class="stat-item" title="Plays">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-          ${formatNumber(video.stats?.plays || 0)}
-        </div>
-        <div class="stat-item" title="Likes">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-          ${formatNumber(video.stats?.likes || 0)}
-        </div>
-        <div class="stat-item" title="Comments">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-          ${formatNumber(video.stats?.comments || 0)}
-        </div>
-        <div class="stat-item" title="Shares">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-          ${formatNumber(video.stats?.shares || 0)}
-        </div>
-      </div>
-      
-      <div class="download-options">
-        ${hdDownloadUrl 
-          ? `<button data-url="${hdDownloadUrl}" data-filename="hd_${safeFilename}" class="dl-btn hd save-as-btn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-              Download Video HD (No Watermark)
-            </button>`
-          : ''
-        }
-        
-        ${wmDownloadUrl 
-          ? `<button data-url="${wmDownloadUrl}" data-filename="wm_${safeFilename}" class="dl-btn watermark save-as-btn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-              Download with Watermark
-            </button>`
-          : ''
-        }
-      </div>
-    </div>
-  `;
-  
+function renderResult(video: VideoInfo): void {
+  resultContainer.replaceChildren(createPreview(video), createVideoInfo(video));
   resultContainer.classList.remove('hidden');
-
-  const saveBtns = resultContainer.querySelectorAll('.save-as-btn');
-  saveBtns.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const url = btn.getAttribute('data-url');
-      const filename = btn.getAttribute('data-filename') || 'video.mp4';
-      if (!url) return;
-      await downloadWithPicker(url, filename, btn as HTMLButtonElement);
-    });
-  });
 }
 
-async function downloadWithPicker(url: string, defaultFilename: string, btn: HTMLButtonElement) {
-  const originalHtml = btn.innerHTML;
-  btn.innerHTML = `<div class="spinner" style="width:20px;height:20px;border-width:2px;display:inline-block;margin-right:8px;vertical-align:middle;"></div> Downloading...`;
-  btn.style.pointerEvents = 'none';
+function createPreview(video: VideoInfo): HTMLDivElement {
+  const container = document.createElement('div');
+  container.className = 'video-preview';
 
-  try {
-    if ('showSaveFilePicker' in window) {
-      const handle = await (window as any).showSaveFilePicker({
-        suggestedName: defaultFilename,
-        types: [{
-          description: 'MP4 Video',
-          accept: { 'video/mp4': ['.mp4'] },
-        }],
-      });
-      
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Download failed');
-      
-      const writable = await handle.createWritable();
-      await response.body?.pipeTo(writable);
-    } else {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = defaultFilename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
-  } catch (err: any) {
-    if (err.name !== 'AbortError') {
-      alert('Error downloading file: ' + err.message);
-    }
-  } finally {
-    btn.innerHTML = originalHtml;
-    btn.style.pointerEvents = 'auto';
+  const showCover = (): void => {
+    if (!video.cover) return;
+    container.replaceChildren(createCoverImage(video));
+  };
+
+  // TikTok streams directly; yt-dlp platforms expose a pre-merged stream
+  // for preview. Fall back to the cover image if it cannot play.
+  const source = video.hdVideoUrl || video.videoUrl || video.previewUrl;
+  if (source) {
+    const preview = document.createElement('video');
+    preview.src = getPreviewUrl(source);
+    preview.poster = video.cover || '';
+    preview.controls = true;
+    preview.preload = 'metadata';
+    preview.addEventListener('error', showCover, { once: true });
+    container.appendChild(preview);
+  } else {
+    showCover();
   }
+  return container;
+}
+
+function createCoverImage(video: VideoInfo): HTMLImageElement {
+  const image = document.createElement('img');
+  image.src = video.cover || '';
+  image.alt = 'Video cover';
+  return image;
+}
+
+function createVideoInfo(video: VideoInfo): HTMLDivElement {
+  const info = document.createElement('div');
+  info.className = 'video-info';
+  info.append(createAuthor(video), createDescription(video), createStats(video), createDownloadOptions(video));
+  return info;
+}
+
+function createAuthor(video: VideoInfo): HTMLDivElement {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'author-info';
+  const avatar = document.createElement('img');
+  avatar.className = 'author-avatar';
+  avatar.src = video.author?.avatar || DEFAULT_AVATAR;
+  avatar.alt = video.author?.name || 'Author';
+  avatar.addEventListener('error', () => { avatar.src = DEFAULT_AVATAR; }, { once: true });
+  const details = document.createElement('div');
+  details.className = 'author-details';
+  const name = document.createElement('h3');
+  name.textContent = video.author?.name || 'Unknown';
+  const username = document.createElement('p');
+  username.textContent = `@${video.author?.username || 'unknown'}`;
+  details.append(name, username, createPlatformBadge(video.platform));
+  wrapper.append(avatar, details);
+  return wrapper;
+}
+
+function createPlatformBadge(platformId?: string): HTMLDivElement {
+  const meta = PLATFORM_META[(platformId || '') as PlatformId];
+  const badge = document.createElement('div');
+  badge.className = 'platform-badge';
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  dot.style.background = meta?.color || 'var(--secondary)';
+  badge.append(dot, document.createTextNode(meta?.name || 'Video'));
+  return badge;
+}
+
+function createDescription(video: VideoInfo): HTMLParagraphElement {
+  const description = document.createElement('p');
+  description.className = 'video-desc';
+  description.textContent = video.title || 'No description';
+  return description;
+}
+
+function createStats(video: VideoInfo): HTMLDivElement {
+  const stats = document.createElement('div');
+  stats.className = 'stats';
+  const items: Array<[string, number | undefined]> = [
+    ['Plays', video.stats?.plays],
+    ['Likes', video.stats?.likes],
+    ['Comments', video.stats?.comments],
+    ['Shares', video.stats?.shares],
+  ];
+  items
+    .filter(([, value]) => value !== undefined)
+    .forEach(([label, value]) => {
+      const item = document.createElement('div');
+      item.className = 'stat-item';
+      item.title = label;
+      item.textContent = `${label}: ${formatNumber(value ?? 0)}`;
+      stats.appendChild(item);
+    });
+  if (stats.children.length > 0) {
+    stats.classList.add('has-items');
+  }
+  return stats;
+}
+
+function createDownloadOptions(video: VideoInfo): HTMLDivElement {
+  const options = document.createElement('div');
+  options.className = 'download-options';
+  const platform = video.platform || 'tiktok';
+  const baseName = `${platform}_${video.id || 'video'}${DOWNLOAD_FILE_EXTENSION}`;
+
+  if (video.formats && video.formats.length > 0) {
+    const best = video.formats[0];
+    const bestSize = formatSize(best.filesize);
+    addYtdlpDownloadButton(
+      options,
+      video,
+      'best',
+      `Download Best Quality (${best.label}${bestSize ? ` · ~${bestSize}` : ''})`,
+      'hd'
+    );
+    const lowerQualities = video.formats.slice(1);
+    if (lowerQualities.length > 0) {
+      options.appendChild(createQualityList(video, lowerQualities));
+    }
+    return options;
+  }
+
+  addDownloadButton(options, video.hdVideoUrl, `hd_${baseName}`, 'Download Video HD (No Watermark)', 'hd');
+  addDownloadButton(options, video.wmVideoUrl, `wm_${baseName}`, 'Download with Watermark', 'watermark');
+  return options;
+}
+
+function createQualityList(video: VideoInfo, formats: VideoFormat[]): HTMLDivElement {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'quality-section';
+  const label = document.createElement('p');
+  label.className = 'quality-label';
+  label.textContent = 'Other qualities';
+  const list = document.createElement('div');
+  list.className = 'quality-list';
+  formats.forEach((format) => {
+    const button = document.createElement('button');
+    button.className = 'quality-btn';
+    const size = formatSize(format.filesize);
+    button.textContent = size ? `${format.label} · ${size}` : format.label;
+    button.title = `Download ${format.label}`;
+    button.addEventListener('click', () =>
+      downloadYtdlpFormat(video, format.formatId, button)
+    );
+    list.appendChild(button);
+  });
+  wrapper.append(label, list);
+  return wrapper;
+}
+
+function addDownloadButton(container: HTMLElement, source: string | null | undefined, filename: string, label: string, className: string): void {
+  if (!source) return;
+  const button = document.createElement('button');
+  button.className = `dl-btn ${className}`;
+  button.textContent = label;
+  button.addEventListener('click', () => downloadWithPicker(getDownloadUrl(source, filename), filename, button));
+  container.appendChild(button);
+}
+
+function addYtdlpDownloadButton(
+  container: HTMLElement,
+  video: VideoInfo,
+  formatId: string,
+  label: string,
+  className: string
+): void {
+  const button = document.createElement('button');
+  button.className = `dl-btn ${className}`;
+  button.textContent = label;
+  button.addEventListener('click', () => downloadYtdlpFormat(video, formatId, button));
+  container.appendChild(button);
+}
+
+function downloadYtdlpFormat(video: VideoInfo, formatId: string, button: HTMLButtonElement): void {
+  const platform = video.platform || 'video';
+  const quality = formatId === 'best' ? video.formats?.[0]?.label || 'best' : formatId;
+  const filename = `${platform}_${video.id || 'video'}_${quality}${DOWNLOAD_FILE_EXTENSION}`;
+  downloadWithPicker(getYtdlpDownloadUrl(video.sourceUrl || urlInput.value.trim(), formatId, filename), filename, button);
+}
+
+function formatNumber(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return value.toString();
+}
+
+function formatSize(bytes: number | null | undefined): string {
+  if (!bytes) return '';
+  if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function showError(message: string): void {
+  errorMessage.textContent = message;
+  errorMessage.classList.remove('hidden');
+}
+
+function hideError(): void {
+  errorMessage.textContent = '';
+  errorMessage.classList.add('hidden');
 }

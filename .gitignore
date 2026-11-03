@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Facebook login cookie profile (contains session data - never commit)
+server/cookies/
+
+# ZCode session artifacts
+.zcode/
