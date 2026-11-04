@@ -1,5 +1,12 @@
 import './style.css';
-import { fetchVideoInfo, getDownloadUrl, getPreviewUrl, getYtdlpDownloadUrl } from './api';
+import {
+  fetchVideoInfo,
+  getDownloadUrl,
+  getImagesZipUrl,
+  getPreviewUrl,
+  getProgressUrl,
+  getYtdlpDownloadUrl,
+} from './api';
 import {
   DEFAULT_AVATAR,
   DOWNLOAD_FILE_EXTENSION,
@@ -8,7 +15,10 @@ import {
   type PlatformId,
 } from './config';
 import { downloadWithPicker } from './download';
-import type { VideoFormat, VideoInfo } from './types';
+import type { DownloadProgress, HistoryEntry, VideoFormat, VideoInfo } from './types';
+
+const HISTORY_KEY = 'videosave-history';
+const HISTORY_LIMIT = 10;
 
 const form = document.querySelector<HTMLFormElement>('#download-form')!;
 const urlInput = document.querySelector<HTMLInputElement>('#url-input')!;
@@ -16,9 +26,11 @@ const pasteButton = document.querySelector<HTMLButtonElement>('#paste-btn')!;
 const loading = document.querySelector<HTMLDivElement>('#loading')!;
 const errorMessage = document.querySelector<HTMLDivElement>('#error-message')!;
 const resultContainer = document.querySelector<HTMLDivElement>('#result-container')!;
+const historyContainer = document.querySelector<HTMLDivElement>('#history-container')!;
 
 pasteButton.addEventListener('click', pasteUrl);
 form.addEventListener('submit', handleSubmit);
+renderHistory();
 
 async function pasteUrl(): Promise<void> {
   try {
@@ -162,6 +174,25 @@ function createDownloadOptions(video: VideoInfo): HTMLDivElement {
   options.className = 'download-options';
   const platform = video.platform || 'tiktok';
   const baseName = `${platform}_${video.id || 'video'}${DOWNLOAD_FILE_EXTENSION}`;
+  const sourceUrl = video.sourceUrl || urlInput.value.trim();
+
+  // TikTok photo slideshow: images only, no video stream.
+  if (video.images && video.images.length > 0) {
+    addSlideshowZipButton(options, video, sourceUrl);
+    options.appendChild(createPhotoGrid(video));
+    // tikwm also generates a slideshow video (photos + music) we can offer.
+    addDownloadButton(
+      options,
+      video.hdVideoUrl,
+      `hd_${video.platform}_${video.id || 'video'}${DOWNLOAD_FILE_EXTENSION}`,
+      'Download as video (photos + music)',
+      'watermark',
+      video,
+      'Video'
+    );
+    addMusicButton(options, video);
+    return options;
+  }
 
   if (video.formats && video.formats.length > 0) {
     const best = video.formats[0];
@@ -177,12 +208,67 @@ function createDownloadOptions(video: VideoInfo): HTMLDivElement {
     if (lowerQualities.length > 0) {
       options.appendChild(createQualityList(video, lowerQualities));
     }
+    addMusicButton(options, video);
     return options;
   }
 
-  addDownloadButton(options, video.hdVideoUrl, `hd_${baseName}`, 'Download Video HD (No Watermark)', 'hd');
-  addDownloadButton(options, video.wmVideoUrl, `wm_${baseName}`, 'Download with Watermark', 'watermark');
+  addDownloadButton(options, video.hdVideoUrl, `hd_${baseName}`, 'Download Video HD (No Watermark)', 'hd', video, 'HD');
+  addDownloadButton(options, video.wmVideoUrl, `wm_${baseName}`, 'Download with Watermark', 'watermark', video, 'Watermark');
+  addMusicButton(options, video);
   return options;
+}
+
+function addSlideshowZipButton(container: HTMLElement, video: VideoInfo, sourceUrl: string): void {
+  const button = document.createElement('button');
+  button.className = 'dl-btn hd';
+  button.textContent = `Download all photos (${video.images!.length} · .zip)`;
+  button.addEventListener('click', () =>
+    runDownload(
+      getImagesZipUrl(sourceUrl, `photos_${video.id || 'tiktok'}.zip`),
+      `photos_${video.id || 'tiktok'}.zip`,
+      button,
+      video,
+      'Photos'
+    )
+  );
+  container.appendChild(button);
+}
+
+function createPhotoGrid(video: VideoInfo): HTMLDivElement {
+  const grid = document.createElement('div');
+  grid.className = 'photo-grid';
+  (video.images || []).forEach((image, index) => {
+    const link = document.createElement('a');
+    link.className = 'photo-item';
+    link.href = getDownloadUrl(image, `${video.platform}_${video.id || 'tiktok'}_photo_${index + 1}.jpg`);
+    link.download = '';
+    link.title = `Download photo ${index + 1}`;
+    const thumb = document.createElement('img');
+    thumb.src = image;
+    thumb.loading = 'lazy';
+    thumb.alt = `Photo ${index + 1}`;
+    link.appendChild(thumb);
+    grid.appendChild(link);
+  });
+  return grid;
+}
+
+function addMusicButton(container: HTMLElement, video: VideoInfo): void {
+  const musicUrl = video.music?.url;
+  if (!musicUrl) return;
+  const button = document.createElement('button');
+  button.className = 'dl-btn watermark';
+  button.textContent = `Download music — ${video.music?.title || 'audio'}`;
+  button.addEventListener('click', () =>
+    runDownload(
+      getDownloadUrl(musicUrl, `music_${video.id || 'tiktok'}.mp3`),
+      `music_${video.id || 'tiktok'}.mp3`,
+      button,
+      video,
+      'Music'
+    )
+  );
+  container.appendChild(button);
 }
 
 function createQualityList(video: VideoInfo, formats: VideoFormat[]): HTMLDivElement {
@@ -199,21 +285,27 @@ function createQualityList(video: VideoInfo, formats: VideoFormat[]): HTMLDivEle
     const size = formatSize(format.filesize);
     button.textContent = size ? `${format.label} · ${size}` : format.label;
     button.title = `Download ${format.label}`;
-    button.addEventListener('click', () =>
-      downloadYtdlpFormat(video, format.formatId, button)
-    );
+    button.addEventListener('click', () => downloadYtdlpFormat(video, format, button));
     list.appendChild(button);
   });
   wrapper.append(label, list);
   return wrapper;
 }
 
-function addDownloadButton(container: HTMLElement, source: string | null | undefined, filename: string, label: string, className: string): void {
+function addDownloadButton(
+  container: HTMLElement,
+  source: string | null | undefined,
+  filename: string,
+  label: string,
+  className: string,
+  video: VideoInfo,
+  quality: string
+): void {
   if (!source) return;
   const button = document.createElement('button');
   button.className = `dl-btn ${className}`;
   button.textContent = label;
-  button.addEventListener('click', () => downloadWithPicker(getDownloadUrl(source, filename), filename, button));
+  button.addEventListener('click', () => runDownload(getDownloadUrl(source, filename), filename, button, video, quality));
   container.appendChild(button);
 }
 
@@ -227,15 +319,181 @@ function addYtdlpDownloadButton(
   const button = document.createElement('button');
   button.className = `dl-btn ${className}`;
   button.textContent = label;
-  button.addEventListener('click', () => downloadYtdlpFormat(video, formatId, button));
+  const format = formatId === 'best'
+    ? video.formats?.[0]
+    : video.formats?.find((f) => f.formatId === formatId);
+  button.addEventListener('click', () => downloadYtdlpFormat(video, format, button, formatId));
   container.appendChild(button);
 }
 
-function downloadYtdlpFormat(video: VideoInfo, formatId: string, button: HTMLButtonElement): void {
+// yt-dlp downloads merge on the server first, so we track progress via SSE.
+function downloadYtdlpFormat(video: VideoInfo, format: VideoFormat | undefined, button: HTMLButtonElement, formatId?: string): void {
   const platform = video.platform || 'video';
-  const quality = formatId === 'best' ? video.formats?.[0]?.label || 'best' : formatId;
+  const quality = format?.label || formatId || 'best';
   const filename = `${platform}_${video.id || 'video'}_${quality}${DOWNLOAD_FILE_EXTENSION}`;
-  downloadWithPicker(getYtdlpDownloadUrl(video.sourceUrl || urlInput.value.trim(), formatId, filename), filename, button);
+  const sourceUrl = video.sourceUrl || urlInput.value.trim();
+  const selector = format?.formatId || formatId || 'best';
+  const expectedSize = format?.filesize ? Math.round(format.filesize * 1.1) : 0;
+
+  const jobId = crypto.randomUUID();
+  const eventSource = new EventSource(getProgressUrl(jobId));
+  eventSource.onmessage = (event) => {
+    const progress = JSON.parse(event.data) as DownloadProgress;
+    renderProgress(button, progress);
+    if (progress.phase === 'done' || progress.phase === 'error') eventSource.close();
+  };
+
+  void runDownload(
+    getYtdlpDownloadUrl(sourceUrl, selector, filename, jobId, expectedSize),
+    filename,
+    button,
+    video,
+    quality,
+    (progress) => renderProgress(button, progress)
+  ).finally(() => eventSource.close());
+}
+
+async function runDownload(
+  url: string,
+  filename: string,
+  button: HTMLButtonElement,
+  video: VideoInfo,
+  quality: string,
+  onProgress?: (progress: DownloadProgress) => void
+): Promise<void> {
+  try {
+    await downloadWithPicker(url, filename, button, onProgress);
+    pushHistory({
+      url: video.sourceUrl || urlInput.value.trim(),
+      title: video.title || 'Untitled',
+      platform: video.platform || 'video',
+      quality,
+      ts: Date.now(),
+    });
+  } catch {
+    // downloadWithPicker already showed the error; nothing to record.
+  }
+}
+
+function renderProgress(button: HTMLButtonElement, progress: DownloadProgress): void {
+  const status = button.querySelector('.dl-status');
+  const bar = button.querySelector<HTMLElement>('.dl-bar');
+  const fill = button.querySelector<HTMLElement>('.dl-bar-fill');
+  if (!status || !bar || !fill) return;
+
+  let text = 'Downloading...';
+  switch (progress.phase) {
+    case 'starting':
+      text = 'Starting...';
+      break;
+    case 'queued':
+      text = `Waiting in queue (#${progress.position || '?'})...`;
+      break;
+    case 'downloading': {
+      const parts = [
+        progress.percent != null ? `${progress.percent}%` : '',
+        progress.downloaded != null && progress.expected
+          ? `${formatSize(progress.downloaded)} / ~${formatSize(progress.expected)}`
+          : progress.downloaded != null ? formatSize(progress.downloaded) : '',
+        progress.speed ? `${formatSize(progress.speed)}/s` : '',
+      ].filter(Boolean);
+      if (parts.length > 0) text = parts.join(' · ');
+      break;
+    }
+    case 'merging':
+      text = 'Merging video + audio...';
+      break;
+    case 'saving':
+      text = 'Saving to your computer...';
+      break;
+    case 'error':
+      text = 'Download failed';
+      break;
+  }
+
+  status.textContent = text;
+  if (progress.percent != null) {
+    bar.classList.add('active');
+    fill.style.width = `${progress.percent}%`;
+  }
+}
+
+// ---- Download history (localStorage, metadata only — files are never stored) ----
+
+function loadHistory(): HistoryEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as HistoryEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function pushHistory(entry: HistoryEntry): void {
+  const items = [entry, ...loadHistory().filter((item) => item.url !== entry.url)].slice(0, HISTORY_LIMIT);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
+  renderHistory();
+}
+
+function renderHistory(): void {
+  const items = loadHistory();
+  historyContainer.replaceChildren();
+  if (items.length === 0) {
+    historyContainer.classList.add('hidden');
+    return;
+  }
+  historyContainer.classList.remove('hidden');
+
+  const head = document.createElement('div');
+  head.className = 'history-head';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Recent downloads';
+  const clear = document.createElement('button');
+  clear.className = 'history-clear';
+  clear.textContent = 'Clear';
+  clear.addEventListener('click', () => {
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistory();
+  });
+  head.append(heading, clear);
+
+  const list = document.createElement('div');
+  list.className = 'history-list';
+  for (const item of items) {
+    const row = document.createElement('button');
+    row.className = 'history-item';
+    row.title = 'Load this video again';
+    row.addEventListener('click', () => {
+      urlInput.value = item.url;
+      form.requestSubmit();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    const main = document.createElement('span');
+    main.className = 'history-main';
+    main.textContent = item.title;
+
+    const meta = document.createElement('span');
+    meta.className = 'history-meta';
+    const platformMeta = PLATFORM_META[item.platform as PlatformId];
+    meta.textContent = [
+      platformMeta?.name || item.platform,
+      item.quality,
+      formatWhen(item.ts),
+    ].filter(Boolean).join(' · ');
+
+    row.append(main, meta);
+    list.appendChild(row);
+  }
+  historyContainer.append(head, list);
+}
+
+function formatWhen(ts: number): string {
+  const minutes = Math.round((Date.now() - ts) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(ts).toLocaleDateString();
 }
 
 function formatNumber(value: number): string {

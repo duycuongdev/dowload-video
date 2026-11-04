@@ -20,6 +20,13 @@ export type VideoFormat = {
   hasAudio: boolean;
 };
 
+export type VideoMusic = {
+  title?: string;
+  author?: string;
+  url?: string | null;
+  cover?: string | null;
+};
+
 export type VideoInfo = {
   id?: string | number;
   title?: string;
@@ -36,6 +43,28 @@ export type VideoInfo = {
   sourceUrl?: string | null;
   // Available qualities, best first (yt-dlp platforms only).
   formats?: VideoFormat[];
+  // Photo slideshow images, best first (TikTok photo posts).
+  images?: string[];
+  music?: VideoMusic;
   author?: VideoAuthor;
   stats?: VideoStats;
+};
+
+export type DownloadProgress = {
+  phase: 'starting' | 'queued' | 'downloading' | 'merging' | 'saving' | 'done' | 'error';
+  percent?: number | null;
+  downloaded?: number | null;
+  expected?: number | null;
+  speed?: number | null;
+  position?: number | null;
+  error?: string;
+};
+
+export type HistoryEntry = {
+  url: string;
+  title: string;
+  platform: string;
+  quality: string;
+  size?: string;
+  ts: number;
 };

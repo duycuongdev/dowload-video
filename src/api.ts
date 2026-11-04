@@ -22,8 +22,26 @@ export function getDownloadUrl(sourceUrl: string, filename: string): string {
 
 // Server-side yt-dlp download (YouTube / Facebook / Instagram): the server
 // fetches + merges the best streams, so we pass the page URL and format id.
-export function getYtdlpDownloadUrl(pageUrl: string, formatId: string, filename: string): string {
-  return `${API_BASE}/download-ytdlp?url=${encodeURIComponent(pageUrl)}&selector=${encodeURIComponent(formatId)}&filename=${encodeURIComponent(filename)}`;
+// jobId/expected enable live progress via /api/progress/:jobId (SSE).
+export function getYtdlpDownloadUrl(
+  pageUrl: string,
+  formatId: string,
+  filename: string,
+  jobId?: string,
+  expectedSize?: number
+): string {
+  let target = `${API_BASE}/download-ytdlp?url=${encodeURIComponent(pageUrl)}&selector=${encodeURIComponent(formatId)}&filename=${encodeURIComponent(filename)}`;
+  if (jobId) target += `&job=${encodeURIComponent(jobId)}`;
+  if (expectedSize && expectedSize > 0) target += `&expected=${expectedSize}`;
+  return target;
+}
+
+export function getImagesZipUrl(pageUrl: string, filename: string): string {
+  return `${API_BASE}/images-zip?url=${encodeURIComponent(pageUrl)}&filename=${encodeURIComponent(filename)}`;
+}
+
+export function getProgressUrl(jobId: string): string {
+  return `${API_BASE}/progress/${encodeURIComponent(jobId)}`;
 }
 
 export function getPreviewUrl(sourceUrl: string): string {

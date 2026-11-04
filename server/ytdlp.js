@@ -3,11 +3,36 @@ import { createReadStream, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { execFile } from 'node:child_process';
 import ytdl from 'youtube-dl-exec';
 import ffmpegPath from 'ffmpeg-static';
 import { detectPlatform } from './platforms.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const YTDLP_BIN = path.join(
+  path.dirname(require.resolve('youtube-dl-exec/package.json')),
+  'bin',
+  process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
+);
+
+// Platforms (YouTube especially) change their anti-bot logic constantly and
+// yt-dlp is patched continuously — keep the binary fresh.
+export function scheduleYtdlpAutoUpdate() {
+  if (!existsSync(YTDLP_BIN)) {
+    console.warn('[yt-dlp] binary not found, skipping auto-update');
+    return;
+  }
+  const update = () => {
+    execFile(YTDLP_BIN, ['-U'], { timeout: 180000 }, (error, stdout) => {
+      const output = (stdout || error?.message || '').trim().split('\n').pop();
+      console.log(`[yt-dlp] update check: ${output || 'no output'}`);
+    });
+  };
+  update();
+  setInterval(update, 24 * 60 * 60 * 1000).unref();
+}
 const MAX_FORMATS = 6;
 
 // Best-quality selector: prefer H.264/AAC (mp4) for player compatibility,
@@ -150,26 +175,34 @@ function approximateSize(format, duration) {
   return Math.round((format.tbr * duration * 1000) / 8);
 }
 
-// Downloads via yt-dlp into a fresh temp dir (merge needs ffmpeg and seeks
+// Creates the temp dir up front so the caller can watch its size while
+// yt-dlp runs (used for SSE progress). downloadViaYtdlp reuses it when given.
+export async function createYtdlpTempDir() {
+  const tmpDir = path.join(
+    os.tmpdir(),
+    `videosave-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  );
+  await mkdir(tmpDir, { recursive: true });
+  return tmpDir;
+}
+
+// Downloads via yt-dlp into a temp dir (merge needs ffmpeg and seeks
 // in both streams, so piping to stdout is not possible). Returns the single
 // merged file plus a cleanup function the caller MUST call after streaming.
-export async function downloadViaYtdlp(pageUrl, formatSelector = BEST_FORMAT_SELECTOR) {
+export async function downloadViaYtdlp(pageUrl, formatSelector = BEST_FORMAT_SELECTOR, tmpDir = null) {
   const cookieFlag = cookieFlagFor(pageUrl);
   let lastError = null;
 
   for (const url of buildAttemptUrls(pageUrl)) {
-    const tmpDir = path.join(
-      os.tmpdir(),
-      `videosave-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    );
-    await mkdir(tmpDir, { recursive: true });
+    const dir = tmpDir || await createYtdlpTempDir();
+    await mkdir(dir, { recursive: true });
 
     try {
       await ytdl.exec(url, {
         f: formatSelector,
         mergeOutputFormat: 'mp4',
         ffmpegLocation: ffmpegPath || undefined,
-        o: path.join(tmpDir, 'video.%(ext)s'),
+        o: path.join(dir, 'video.%(ext)s'),
         noPlaylist: true,
         noWarnings: true,
         noCheckCertificates: true,
@@ -177,17 +210,17 @@ export async function downloadViaYtdlp(pageUrl, formatSelector = BEST_FORMAT_SEL
         ...cookieFlag,
       });
 
-      const files = await readdir(tmpDir);
+      const files = await readdir(dir);
       if (files.length === 0) {
         throw new Error('yt-dlp produced no output file');
       }
       return {
-        filePath: path.join(tmpDir, files[0]),
-        cleanup: () => rm(tmpDir, { recursive: true, force: true }),
+        filePath: path.join(dir, files[0]),
+        cleanup: () => rm(dir, { recursive: true, force: true }),
       };
     } catch (error) {
       lastError = error;
-      await rm(tmpDir, { recursive: true, force: true });
+      await rm(dir, { recursive: true, force: true });
     }
   }
   throw translateError(lastError);
