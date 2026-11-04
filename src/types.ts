@@ -51,7 +51,7 @@ export type VideoInfo = {
 };
 
 export type DownloadProgress = {
-  phase: 'starting' | 'queued' | 'downloading' | 'merging' | 'saving' | 'done' | 'error';
+  phase: 'starting' | 'queued' | 'downloading' | 'merging' | 'saving' | 'done' | 'error' | 'cancelling' | 'cancelled';
   percent?: number | null;
   downloaded?: number | null;
   expected?: number | null;

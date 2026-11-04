@@ -15,6 +15,7 @@ import {
   createYtdlpTempDir,
   buildFormatSelector,
   scheduleYtdlpAutoUpdate,
+  killProcessTree,
 } from './server/ytdlp.js';
 
 const TIKWM_API = 'https://www.tikwm.com/api/';
@@ -98,11 +99,21 @@ const downloadSlots = { active: 0, waiting: [] };
 
 async function acquireSlot(jobId) {
   downloadSlots.waiting.push(jobId);
-  while (downloadSlots.active >= MAX_CONCURRENT_MERGES || downloadSlots.waiting[0] !== jobId) {
+  while (true) {
+    const job = jobs.get(jobId);
+    // Cancelled while waiting: the cancel endpoint removes the id from the
+    // queue, which we detect here to bail out instead of waiting forever.
+    if (job?.phase === 'cancelled' || !downloadSlots.waiting.includes(jobId)) {
+      if (downloadSlots.waiting[0] === jobId) downloadSlots.waiting.shift();
+      throw new Error('cancelled');
+    }
+    if (downloadSlots.active < MAX_CONCURRENT_MERGES && downloadSlots.waiting[0] === jobId) {
+      downloadSlots.waiting.shift();
+      downloadSlots.active++;
+      return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
-  downloadSlots.waiting.shift();
-  downloadSlots.active++;
 }
 
 // Get video info from any supported platform URL
@@ -214,7 +225,7 @@ app.get('/api/progress/:jobId', (req, res) => {
       job.position = downloadSlots.waiting.indexOf(jobId) + 1;
     }
     res.write(`data: ${JSON.stringify(job)}\n\n`);
-    if (job.phase === 'done' || job.phase === 'error') {
+    if (['done', 'error', 'cancelled'].includes(job.phase)) {
       clearInterval(timer);
       res.end();
     }
@@ -222,6 +233,28 @@ app.get('/api/progress/:jobId', (req, res) => {
   const timer = setInterval(send, 1000);
   send();
   req.on('close', () => clearInterval(timer));
+});
+
+// Cancel a queued or running download. For a running job this kills the
+// whole yt-dlp process tree (yt-dlp may have spawned ffmpeg already).
+app.post('/api/cancel/:jobId', async (req, res) => {
+  const job = jobs.get(req.params.jobId);
+  if (!job) {
+    return res.json({ ok: false, reason: 'unknown or already finished' });
+  }
+  if (job.phase === 'queued') {
+    const index = downloadSlots.waiting.indexOf(req.params.jobId);
+    if (index !== -1) downloadSlots.waiting.splice(index, 1);
+    job.phase = 'cancelled';
+    setTimeout(() => jobs.delete(req.params.jobId), 60000).unref();
+    return res.json({ ok: true, phase: 'cancelled' });
+  }
+  if (['done', 'error', 'cancelled'].includes(job.phase)) {
+    return res.json({ ok: false, reason: 'already finished' });
+  }
+  job.phase = 'cancelling';
+  await killProcessTree(job.child);
+  res.json({ ok: true, phase: 'cancelling' });
 });
 
 // Download via yt-dlp (YouTube / Facebook / Instagram): the best-quality
@@ -238,21 +271,30 @@ app.get('/api/download-ytdlp', async (req, res) => {
   }
 
   const tracked = typeof jobId === 'string' && /^[a-f0-9-]{8,64}$/i.test(jobId);
-  const releaseSlot = () => { downloadSlots.active--; };
+  let slotAcquired = false; // only decrement after acquireSlot actually granted one
+  const releaseSlot = () => {
+    if (slotAcquired) {
+      downloadSlots.active--;
+      slotAcquired = false;
+    }
+  };
   let stopPoller = () => {};
   let tmpDir = null;
 
   if (tracked) {
     const expectedSize = Number(expected) || 0;
-    jobs.set(jobId, { phase: 'queued', percent: 0, downloaded: 0, expected: expectedSize, speed: 0 });
+    jobs.set(jobId, { phase: 'queued', percent: 0, downloaded: 0, expected: expectedSize, speed: 0, child: null });
     await acquireSlot(jobId);
+    slotAcquired = true;
     setJobPhase(jobId, 'downloading');
     tmpDir = await createYtdlpTempDir();
     stopPoller = startProgressPoller(jobId, tmpDir, expectedSize);
   }
 
+  const onSpawn = tracked ? (child) => { const job = jobs.get(jobId); if (job) job.child = child; } : null;
+
   try {
-    const { filePath, cleanup } = await downloadViaYtdlp(url, buildFormatSelector(selector), tmpDir);
+    const { filePath, cleanup } = await downloadViaYtdlp(url, buildFormatSelector(selector), tmpDir, onSpawn);
     try {
       const fileStat = await stat(filePath);
       res.setHeader('Content-Type', 'video/mp4');
@@ -278,16 +320,27 @@ app.get('/api/download-ytdlp', async (req, res) => {
     stopPoller();
     if (tracked) {
       const job = jobs.get(jobId);
+      const cancelled = job?.phase === 'cancelled' || job?.phase === 'cancelling';
       if (job) {
-        job.phase = 'error';
-        job.error = error.message;
-        setTimeout(() => jobs.delete(jobId), 60000).unref();
+        if (cancelled) {
+          job.phase = 'cancelled';
+          setTimeout(() => jobs.delete(jobId), 60000).unref();
+        } else {
+          job.phase = 'error';
+          job.error = error.message;
+          setTimeout(() => jobs.delete(jobId), 60000).unref();
+        }
       }
       releaseSlot();
-      if (tmpDir) await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      if (tmpDir) {
+        await rm(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }).catch(() => {});
+      }
     }
     console.error('Error downloading via yt-dlp:', error.message);
     if (!res.headersSent) {
+      if (error.message === 'cancelled') {
+        return res.status(499).json({ error: 'Download cancelled' });
+      }
       res.status(500).json({ error: error.message || 'Download failed. Please try again.' });
     }
   }

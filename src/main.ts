@@ -1,5 +1,6 @@
 import './style.css';
 import {
+  cancelDownload,
   fetchVideoInfo,
   getDownloadUrl,
   getImagesZipUrl,
@@ -285,7 +286,7 @@ function createQualityList(video: VideoInfo, formats: VideoFormat[]): HTMLDivEle
     const size = formatSize(format.filesize);
     button.textContent = size ? `${format.label} · ${size}` : format.label;
     button.title = `Download ${format.label}`;
-    button.addEventListener('click', () => downloadYtdlpFormat(video, format, button));
+    button.addEventListener('click', () => handleYtdlpClick(video, format, undefined, button));
     list.appendChild(button);
   });
   wrapper.append(label, list);
@@ -322,12 +323,24 @@ function addYtdlpDownloadButton(
   const format = formatId === 'best'
     ? video.formats?.[0]
     : video.formats?.find((f) => f.formatId === formatId);
-  button.addEventListener('click', () => downloadYtdlpFormat(video, format, button, formatId));
+  button.addEventListener('click', () => handleYtdlpClick(video, format, formatId, button));
   container.appendChild(button);
 }
 
-// yt-dlp downloads merge on the server first, so we track progress via SSE.
-function downloadYtdlpFormat(video: VideoInfo, format: VideoFormat | undefined, button: HTMLButtonElement, formatId?: string): void {
+// A running download keeps the button clickable: the next click cancels it.
+type ActiveDownload = { jobId: string; controller: AbortController; eventSource: EventSource };
+const activeDownloads = new WeakMap<HTMLButtonElement, ActiveDownload>();
+
+function handleYtdlpClick(video: VideoInfo, format: VideoFormat | undefined, formatId: string | undefined, button: HTMLButtonElement): void {
+  const active = activeDownloads.get(button);
+  if (active) {
+    void cancelActiveDownload(active, button);
+    return;
+  }
+  startYtdlpDownload(video, format, formatId, button);
+}
+
+function startYtdlpDownload(video: VideoInfo, format: VideoFormat | undefined, formatId: string | undefined, button: HTMLButtonElement): void {
   const platform = video.platform || 'video';
   const quality = format?.label || formatId || 'best';
   const filename = `${platform}_${video.id || 'video'}_${quality}${DOWNLOAD_FILE_EXTENSION}`;
@@ -336,12 +349,14 @@ function downloadYtdlpFormat(video: VideoInfo, format: VideoFormat | undefined, 
   const expectedSize = format?.filesize ? Math.round(format.filesize * 1.1) : 0;
 
   const jobId = crypto.randomUUID();
+  const controller = new AbortController();
   const eventSource = new EventSource(getProgressUrl(jobId));
   eventSource.onmessage = (event) => {
     const progress = JSON.parse(event.data) as DownloadProgress;
     renderProgress(button, progress);
-    if (progress.phase === 'done' || progress.phase === 'error') eventSource.close();
+    if (['done', 'error', 'cancelled'].includes(progress.phase)) eventSource.close();
   };
+  activeDownloads.set(button, { jobId, controller, eventSource });
 
   void runDownload(
     getYtdlpDownloadUrl(sourceUrl, selector, filename, jobId, expectedSize),
@@ -349,8 +364,30 @@ function downloadYtdlpFormat(video: VideoInfo, format: VideoFormat | undefined, 
     button,
     video,
     quality,
-    (progress) => renderProgress(button, progress)
-  ).finally(() => eventSource.close());
+    { onProgress: (progress) => renderProgress(button, progress), signal: controller.signal, cancellable: true }
+  ).finally(() => {
+    activeDownloads.delete(button);
+    eventSource.close();
+  });
+}
+
+async function cancelActiveDownload(active: ActiveDownload, button: HTMLButtonElement): Promise<void> {
+  activeDownloads.delete(button);
+  active.controller.abort(); // aborts the browser fetch + save pipe
+  eventSourceCloseQuietly(active.eventSource);
+  await cancelDownload(active.jobId); // server kills the yt-dlp process tree
+  const status = button.querySelector('.dl-status');
+  if (status) status.textContent = 'Cancelled';
+  const bar = button.querySelector<HTMLElement>('.dl-bar');
+  const fill = button.querySelector<HTMLElement>('.dl-bar-fill');
+  if (bar && fill) {
+    bar.classList.add('active');
+    fill.style.width = '0%';
+  }
+}
+
+function eventSourceCloseQuietly(source: EventSource): void {
+  try { source.close(); } catch { /* already closed */ }
 }
 
 async function runDownload(
@@ -359,10 +396,10 @@ async function runDownload(
   button: HTMLButtonElement,
   video: VideoInfo,
   quality: string,
-  onProgress?: (progress: DownloadProgress) => void
+  options: { onProgress?: (progress: DownloadProgress) => void; signal?: AbortSignal; cancellable?: boolean } = {}
 ): Promise<void> {
   try {
-    await downloadWithPicker(url, filename, button, onProgress);
+    await downloadWithPicker(url, filename, button, options);
     pushHistory({
       url: video.sourceUrl || urlInput.value.trim(),
       title: video.title || 'Untitled',
@@ -405,6 +442,10 @@ function renderProgress(button: HTMLButtonElement, progress: DownloadProgress): 
       break;
     case 'saving':
       text = 'Saving to your computer...';
+      break;
+    case 'cancelling':
+    case 'cancelled':
+      text = 'Cancelled';
       break;
     case 'error':
       text = 'Download failed';
