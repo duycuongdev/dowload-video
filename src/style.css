@@ -1,5 +1,5 @@
 :root {
-  --primary: #fe2c55;
+  --primary: #8b5cf6;
   --secondary: #25f4ee;
   --bg: #0f0f13;
   --surface: rgba(30, 30, 36, 0.7);
@@ -68,7 +68,7 @@ body {
 .blob-3 {
   width: 300px;
   height: 300px;
-  background: #7c3aed;
+  background: #ec4899;
   top: 40%;
   left: 40%;
   animation-delay: -10s;
@@ -221,7 +221,7 @@ header {
 }
 
 .primary-btn {
-  background: linear-gradient(135deg, var(--primary), #d91c46);
+  background: linear-gradient(135deg, var(--primary), #6d28d9);
   color: white;
   border: none;
   border-radius: 1rem;
@@ -235,12 +235,12 @@ header {
   justify-content: center;
   gap: 0.5rem;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 14px 0 rgba(254, 44, 85, 0.39);
+  box-shadow: 0 4px 14px 0 rgba(139, 92, 246, 0.39);
 }
 
 .primary-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(254, 44, 85, 0.5);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
 }
 
 .primary-btn:active {
@@ -608,8 +608,8 @@ header {
 }
 
 .history-clear:hover {
-  color: var(--primary);
-  background: rgba(254, 44, 85, 0.08);
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.12);
 }
 
 .history-list {
