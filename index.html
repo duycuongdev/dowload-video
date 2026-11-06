@@ -45,9 +45,7 @@
         <p class="subtitle">TikTok · YouTube · Facebook · Instagram — best quality, no watermark</p>
       </div>
 
-      <div class="app-columns">
-        <div class="main-column">
-          <div class="search-box">
+      <div class="search-box">
         <form id="download-form">
           <div class="input-group">
             <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -76,18 +74,14 @@
           <p>Extracting video information...</p>
         </div>
         <div id="error-message" class="error hidden"></div>
-          </div>
+      </div>
 
-          <!-- Result Container -->
-          <div id="result-container" class="result-box hidden">
-            <!-- Populated by JS -->
-          </div>
-        </div>
+      <!-- Download history (localStorage): 3 newest visible, scroll for older -->
+      <div id="history-container" class="history-box hidden"></div>
 
-        <aside id="history-panel" class="history-aside">
-          <!-- Download history (localStorage) -->
-          <div id="history-container" class="history-box hidden"></div>
-        </aside>
+      <!-- Result Container -->
+      <div id="result-container" class="result-box hidden">
+        <!-- Populated by JS -->
       </div>
     </main>
 

@@ -121,50 +121,6 @@ header {
   align-items: center;
 }
 
-/* Two-column layout: main flow + history sidebar (desktop) */
-.app-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.5rem;
-  width: 100%;
-  justify-items: center;
-}
-
-.main-column {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-}
-
-.history-aside {
-  width: 100%;
-}
-
-@media (min-width: 1024px) {
-  .container {
-    max-width: 1040px;
-  }
-
-  .app-columns {
-    grid-template-columns: minmax(0, 720px) 296px;
-    align-items: start;
-  }
-
-  .app-columns.no-history {
-    grid-template-columns: minmax(0, 720px);
-  }
-
-  .history-aside {
-    position: sticky;
-    top: 1.25rem;
-  }
-
-  .history-box {
-    margin-top: 0;
-  }
-}
-
 .hero {
   text-align: center;
   margin-bottom: 3rem;
@@ -618,6 +574,7 @@ header {
 /* Download history */
 .history-box {
   width: 100%;
+  max-width: 600px;
   margin-top: 1.5rem;
   background: var(--surface);
   backdrop-filter: blur(var(--glass-blur));
@@ -659,6 +616,25 @@ header {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
+  /* Show the 3 newest entries; older ones live below the fold (scroll). */
+  max-height: 11.25rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.45) transparent;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.45);
+  border-radius: 3px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .history-item {
