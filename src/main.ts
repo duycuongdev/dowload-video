@@ -28,6 +28,8 @@ const loading = document.querySelector<HTMLDivElement>('#loading')!;
 const errorMessage = document.querySelector<HTMLDivElement>('#error-message')!;
 const resultContainer = document.querySelector<HTMLDivElement>('#result-container')!;
 const historyContainer = document.querySelector<HTMLDivElement>('#history-container')!;
+const historyPanel = document.querySelector<HTMLElement>('#history-panel')!;
+const appColumns = document.querySelector<HTMLElement>('.app-columns')!;
 
 pasteButton.addEventListener('click', pasteUrl);
 form.addEventListener('submit', handleSubmit);
@@ -478,11 +480,13 @@ function pushHistory(entry: HistoryEntry): void {
 function renderHistory(): void {
   const items = loadHistory();
   historyContainer.replaceChildren();
-  if (items.length === 0) {
-    historyContainer.classList.add('hidden');
+  const hasItems = items.length > 0;
+  historyContainer.classList.toggle('hidden', !hasItems);
+  historyPanel.hidden = !hasItems;          // collapse the sidebar column
+  appColumns.classList.toggle('no-history', !hasItems); // center the main column
+  if (!hasItems) {
     return;
   }
-  historyContainer.classList.remove('hidden');
 
   const head = document.createElement('div');
   head.className = 'history-head';

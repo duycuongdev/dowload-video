@@ -121,6 +121,50 @@ header {
   align-items: center;
 }
 
+/* Two-column layout: main flow + history sidebar (desktop) */
+.app-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  width: 100%;
+  justify-items: center;
+}
+
+.main-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.history-aside {
+  width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .container {
+    max-width: 1040px;
+  }
+
+  .app-columns {
+    grid-template-columns: minmax(0, 720px) 296px;
+    align-items: start;
+  }
+
+  .app-columns.no-history {
+    grid-template-columns: minmax(0, 720px);
+  }
+
+  .history-aside {
+    position: sticky;
+    top: 1.25rem;
+  }
+
+  .history-box {
+    margin-top: 0;
+  }
+}
+
 .hero {
   text-align: center;
   margin-bottom: 3rem;
@@ -574,7 +618,6 @@ header {
 /* Download history */
 .history-box {
   width: 100%;
-  max-width: 600px;
   margin-top: 1.5rem;
   background: var(--surface);
   backdrop-filter: blur(var(--glass-blur));
