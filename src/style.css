@@ -616,6 +616,25 @@ header {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
+  /* Show the 3 newest entries; older ones live below the fold (scroll). */
+  max-height: 11.25rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.45) transparent;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.45);
+  border-radius: 3px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .history-item {

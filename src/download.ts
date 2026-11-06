@@ -1,16 +1,26 @@
 import type { DownloadProgress } from './types';
 
+export type DownloadOptions = {
+  onProgress?: (progress: DownloadProgress) => void;
+  // Provided for long server-side downloads: pass to fetch so the UI can
+  // abort. When set the button stays clickable (second click = cancel).
+  signal?: AbortSignal;
+  cancellable?: boolean;
+};
+
 export async function downloadWithPicker(
   url: string,
   filename: string,
   button: HTMLButtonElement,
-  onProgress?: (progress: DownloadProgress) => void
+  options: DownloadOptions = {}
 ): Promise<void> {
+  const { onProgress, signal, cancellable } = options;
   const originalHtml = button.innerHTML;
   button.innerHTML =
     '<div class="spinner inline-spinner"></div> <span class="dl-status">Downloading...</span>' +
     '<div class="dl-bar"><div class="dl-bar-fill"></div></div>';
-  button.disabled = true;
+  button.disabled = !cancellable;
+  if (cancellable) button.title = 'Click to cancel download';
   onProgress?.({ phase: 'starting' });
 
   try {
@@ -21,13 +31,13 @@ export async function downloadWithPicker(
         types: [{ description: 'MP4 Video', accept: { 'video/mp4': ['.mp4'] } }],
       });
       if (!handle) return;
-      const response = await fetch(url);
+      const response = await fetch(url, { signal });
       if (!response.ok || !response.body) {
         const error = await response.json().catch(() => null);
         throw new Error(error?.error || 'Download failed');
       }
       onProgress?.({ phase: 'saving' });
-      await response.body.pipeTo(await handle.createWritable());
+      await response.body.pipeTo(await handle.createWritable(), { signal });
       return;
     }
 
@@ -45,5 +55,6 @@ export async function downloadWithPicker(
   } finally {
     button.innerHTML = originalHtml;
     button.disabled = false;
+    button.title = '';
   }
 }

@@ -44,6 +44,12 @@ export function getProgressUrl(jobId: string): string {
   return `${API_BASE}/progress/${encodeURIComponent(jobId)}`;
 }
 
+export function cancelDownload(jobId: string): Promise<{ ok: boolean }> {
+  return fetch(`${API_BASE}/cancel/${encodeURIComponent(jobId)}`, { method: 'POST' })
+    .then((r) => r.json())
+    .catch(() => ({ ok: false }));
+}
+
 export function getPreviewUrl(sourceUrl: string): string {
   return `${API_BASE}/preview?url=${encodeURIComponent(sourceUrl)}`;
 }
