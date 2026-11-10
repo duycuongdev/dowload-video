@@ -36,7 +36,7 @@ export type VideoInfo = {
   wmVideoUrl?: string | null;
   // Pre-merged stream usable for in-browser preview (yt-dlp platforms).
   previewUrl?: string | null;
-  // 'tiktok' | 'youtube' | 'facebook' | 'instagram'
+  // 'tiktok' | 'douyin' | 'youtube' | 'facebook' | 'instagram'
   platform?: string;
   // Canonical URL the server successfully extracted with (share links get
   // rewritten); downloads should reuse it.

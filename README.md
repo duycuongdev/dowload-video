@@ -2,13 +2,14 @@
 
 A beautiful multi-platform video downloader — paste a link, preview instantly, save in the **best available quality** (up to 4K).
 
-**Supported platforms:** TikTok · YouTube · Facebook · Instagram
+**Supported platforms:** TikTok · Douyin · YouTube · Facebook · Instagram
 
 ![VideoSave home](docs/screenshots/home.png)
 
 ## ✨ Features
 
-- **One input, four platforms** — the URL is auto-detected, no manual switching
+- **One input, five platforms** — the URL is auto-detected, no manual switching
+- **Douyin without sign-in** — signed public metadata requests, short-link resolution, HD no-watermark downloads
 - **Best quality by default** — yt-dlp + ffmpeg merge separate video/audio streams into a clean MP4 (H.264/AAC preferred), unlocking 1080p/4K that browser-only tools can't reach
 - **Quality picker** — every available resolution with estimated file size, right on the result card
 - **Instant preview** — play the video in-page before downloading
@@ -60,6 +61,7 @@ Sessions last a few months — if Facebook videos start failing again, run the s
 | Platform | Engine | Notes |
 | --- | --- | --- |
 | TikTok | tikwm.com API | HD no-watermark + watermarked options |
+| Douyin | Signed public web API | Short links, HD no-watermark + watermarked options, no sign-in |
 | YouTube | yt-dlp + ffmpeg | Up to 4K, H.264/AAC merged MP4 |
 | Facebook | yt-dlp + ffmpeg | Share links (`/share/v/`, `/share/r/`) auto-normalized; login cookies supported |
 | Instagram | yt-dlp + ffmpeg | Public posts, reels |
@@ -67,6 +69,7 @@ Sessions last a few months — if Facebook videos start failing again, run the s
 ```
 URL ──▶ detectPlatform()
          ├─ tiktok ──────────────▶ tikwm.com API ──▶ direct stream proxy
+         ├─ douyin ──────────────▶ signed web API ──▶ direct stream proxy
          └─ youtube / facebook /
             instagram ───────────▶ yt-dlp -J ──▶ quality list
                                  └▶ yt-dlp -f bestvideo+bestaudio
@@ -78,7 +81,7 @@ URL ──▶ detectPlatform()
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/video-info` | Platform detection + normalized metadata + qualities |
-| `GET /api/download` | Direct media proxy (TikTok) |
+| `GET /api/download` | Direct media proxy (TikTok / Douyin) |
 | `GET /api/download-ytdlp` | Server-side download + merge to MP4 |
 | `GET /api/preview` | Media proxy for the in-page player |
 

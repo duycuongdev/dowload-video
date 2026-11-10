@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { stat, readdir, rm } from 'node:fs/promises';
 import { detectPlatform } from './server/platforms.js';
+import { getDouyinInfo } from './server/douyin.js';
 
 const require = createRequire(import.meta.url);
 const { ZipArchive } = require('archiver'); // archiver v8: class-based API
@@ -127,14 +128,16 @@ app.post('/api/video-info', async (req, res) => {
   const platform = detectPlatform(url);
   if (!platform) {
     return res.status(400).json({
-      error: 'Unsupported platform. Supported: TikTok, YouTube, Facebook, Instagram.',
+      error: 'Unsupported platform. Supported: TikTok, Douyin, YouTube, Facebook, Instagram.',
     });
   }
 
   try {
     const info = platform.engine === 'tikwm'
       ? await fetchTikwmInfo(url)
-      : await getYtdlpInfo(url);
+      : platform.engine === 'douyin'
+        ? await getDouyinInfo(url)
+        : await getYtdlpInfo(url);
     res.json({ success: true, data: { ...info, platform: platform.id } });
   } catch (error) {
     console.error(`Error fetching ${platform.id} video info:`, error.message);
@@ -438,6 +441,16 @@ function sanitizeFilename(value) {
   return `${cleaned}.mp4`;
 }
 
+function mediaReferer(value) {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    if (['douyin.com', 'iesdouyin.com', 'douyinvod.com', 'douyinstatic.com', 'zjcdn.com'].some((domain) => host === domain || host.endsWith(`.${domain}`))) {
+      return 'https://www.douyin.com/';
+    }
+  } catch { /* validated before this helper is called */ }
+  return TIKWM_ORIGIN;
+}
+
 async function proxyMedia(req, res, asAttachment, timeout) {
   const { url, filename } = req.query;
 
@@ -453,12 +466,13 @@ async function proxyMedia(req, res, asAttachment, timeout) {
       timeout,
       headers: {
         'User-Agent': USER_AGENT,
-        Referer: TIKWM_ORIGIN,
+        Referer: mediaReferer(url),
+        ...(req.headers.range ? { Range: req.headers.range } : {}),
       },
     });
 
-    const contentType = response.headers['content-type'] || 'video/mp4';
-    res.setHeader('Content-Type', contentType);
+    res.status(response.status);
+    res.setHeader('Content-Type', response.headers['content-type'] || 'video/mp4');
     if (asAttachment) {
       res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(filename)}"`);
     } else {
@@ -466,6 +480,9 @@ async function proxyMedia(req, res, asAttachment, timeout) {
     }
     if (response.headers['content-length']) {
       res.setHeader('Content-Length', response.headers['content-length']);
+    }
+    if (response.headers['content-range']) {
+      res.setHeader('Content-Range', response.headers['content-range']);
     }
     response.data.pipe(res);
   } catch (error) {
