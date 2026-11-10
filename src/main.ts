@@ -49,7 +49,7 @@ async function handleSubmit(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   const url = urlInput.value.trim();
   if (!detectPlatformId(url)) {
-    showError('Please enter a valid video URL from TikTok, YouTube, Facebook or Instagram');
+    showError('Please enter a valid video URL from TikTok, Douyin, YouTube, Facebook or Instagram');
     return;
   }
   hideError();
@@ -78,8 +78,8 @@ function createPreview(video: VideoInfo): HTMLDivElement {
     container.replaceChildren(createCoverImage(video));
   };
 
-  // TikTok streams directly; yt-dlp platforms expose a pre-merged stream
-  // for preview. Fall back to the cover image if it cannot play.
+  // TikTok/Douyin stream directly; yt-dlp platforms expose a pre-merged
+  // stream for preview. Fall back to the cover image if it cannot play.
   const source = video.hdVideoUrl || video.videoUrl || video.previewUrl;
   if (source) {
     const preview = document.createElement('video');
@@ -177,7 +177,8 @@ function createDownloadOptions(video: VideoInfo): HTMLDivElement {
   const baseName = `${platform}_${video.id || 'video'}${DOWNLOAD_FILE_EXTENSION}`;
   const sourceUrl = video.sourceUrl || urlInput.value.trim();
 
-  // TikTok photo slideshow: images only, no video stream.
+  // TikTok photo slideshow: images only, no video stream. Douyin uses the
+  // direct video options below with HD/no-watermark and watermarked sources.
   if (video.images && video.images.length > 0) {
     addSlideshowZipButton(options, video, sourceUrl);
     options.appendChild(createPhotoGrid(video));
@@ -262,8 +263,8 @@ function addMusicButton(container: HTMLElement, video: VideoInfo): void {
   button.textContent = `Download music — ${video.music?.title || 'audio'}`;
   button.addEventListener('click', () =>
     runDownload(
-      getDownloadUrl(musicUrl, `music_${video.id || 'tiktok'}.mp3`),
-      `music_${video.id || 'tiktok'}.mp3`,
+      getDownloadUrl(musicUrl, `music_${video.id || video.platform || 'video'}.mp3`),
+      `music_${video.id || video.platform || 'video'}.mp3`,
       button,
       video,
       'Music'

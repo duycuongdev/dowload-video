@@ -8,6 +8,13 @@ export const PLATFORMS = {
     color: '#111111',
     hosts: ['tiktok.com'],
   },
+  douyin: {
+    id: 'douyin',
+    name: 'Douyin',
+    engine: 'douyin',
+    color: '#161823',
+    hosts: ['douyin.com', 'iesdouyin.com'],
+  },
   youtube: {
     id: 'youtube',
     name: 'YouTube',
